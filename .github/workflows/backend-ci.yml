@@ -64,3 +64,14 @@ jobs:
           tags: |
             stephyborrego/brew-and-co-backend:latest
             stephyborrego/brew-and-co-backend:${{ github.sha }}
+
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
