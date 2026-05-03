@@ -28,4 +28,8 @@ app.get('/menu/:id', (req, res) => {
   res.status(200).json(item);
 });
 
+app.get('/debug-sentry', (req, res) => {
+  throw new Error('Sentry test error from Brew & Co. backend');
+});
+
 module.exports = app;
