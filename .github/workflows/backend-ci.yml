@@ -36,6 +36,8 @@ jobs:
       - name: Run tests with coverage
         working-directory: backend
         run: npm test
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -90,6 +92,7 @@ jobs:
               -e PORT=3000 \
               -e NODE_ENV=development \
               -e SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+              -e MONGODB_URI=${{ secrets.MONGODB_URI }} \
               --name brew-and-co-backend \
               --restart always \
               stephyborrego/brew-and-co-backend:latest
@@ -116,6 +119,7 @@ jobs:
               -e PORT=3000 \
               -e NODE_ENV=production \
               -e SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+              -e MONGODB_URI=${{ secrets.MONGODB_URI }} \
               --name brew-and-co-backend \
               --restart always \
               stephyborrego/brew-and-co-backend:latest
