@@ -849,26 +849,29 @@ html, body {
 }
 
 .free-product-card {
-  background: linear-gradient(135deg, #c9a96e, #9c7a56);
+  background: white;
+  border: 1.5px solid var(--gold);
   border-radius: var(--radius);
-  padding: 16px 18px;
+  padding: 14px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: white;
-  font-weight: 500;
-  font-size: 14px;
+  gap: 12px;
 }
 
+.free-product-info { flex: 1; }
+
 .claim-btn {
-  background: white;
-  color: var(--brown);
+  background: var(--brown);
+  color: var(--cream);
   border: none;
   border-radius: 20px;
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .code-section {
@@ -929,6 +932,7 @@ html, body {
 .history-row:last-child { border-bottom: none; }
 .history-date { color: var(--muted); }
 .history-stars { color: var(--accent); font-weight: 600; }
+.history-stars.redeemed { color: #6a9e6a; }
 
 /* ── Account ───────────────────────────────────────────── */
 .account-screen { overflow: hidden; }
@@ -1032,3 +1036,106 @@ html, body {
   font-weight: 500;
   cursor: pointer;
 }
+
+/* ── How It Works ───────────────────────────────────────── */
+.how-it-works {
+  background: white;
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.how-it-works h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brown);
+  margin-bottom: 12px;
+}
+
+.hiw-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.hiw-row:last-child { margin-bottom: 0; }
+
+.hiw-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.hiw-text {
+  font-size: 13px;
+  color: var(--brown);
+  line-height: 1.5;
+}
+
+.history-stars.redeemed { color: #6a9e6a; }
+
+/* ── Stripe CardElement ─────────────────────────────────── */
+.stripe-card-element {
+  padding: 13px 14px;
+  border: 1.5px solid rgba(0,0,0,0.1);
+  border-radius: 10px;
+  background: white;
+  margin-bottom: 8px;
+}
+
+.stripe-card-element.StripeElement--focus { border-color: var(--gold); }
+.stripe-card-element.StripeElement--invalid { border-color: #c06060; }
+
+.stripe-error {
+  font-size: 13px;
+  color: #c06060;
+  margin: 4px 0 8px;
+}
+
+/* ── Free Reward Banner ──────────────────────────────────── */
+.free-reward-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 16px 8px;
+  padding: 13px 16px;
+  background: white;
+  border: 1.5px solid var(--gold);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.free-reward-banner.applied {
+  border-color: #6a9e6a;
+}
+
+.free-reward-text { flex: 1; }
+.free-reward-title { font-size: 14px; font-weight: 600; color: var(--brown); }
+.free-reward-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.free-reward-check {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.free-reward-banner.applied .free-reward-check { background: #6a9e6a; }

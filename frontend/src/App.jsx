@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '')
 
 // ── Constants ──────────────────────────────────────────────
 const STARS_GOAL = 50
 const MILK_OPTIONS = [
-  { id: 'regular', name: 'Regular', extra: 0 },
+  { id: 'entera', name: 'Entera', extra: 0 },
   { id: 'deslactosada', name: 'Deslactosada', extra: 5 },
-  { id: 'entera', name: 'Entera', extra: 5 },
+  { id: 'descremada', name: 'Descremada', extra: 5 },
   { id: 'soya', name: 'Soya', extra: 5 },
   { id: 'almendra', name: 'Almendra', extra: 5 },
 ]
@@ -351,22 +355,103 @@ function ProductsScreen({ favorites, cart, onToggleFavorite, onAddToCart, cartCo
 // ══════════════════════════════════════════════════════════
 // ORDER SCREEN
 // ══════════════════════════════════════════════════════════
-function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder }) {
+// ── Payment Form (uses Stripe hooks — must be inside <Elements>) ──
+function PaymentForm({ total, itemCount, hasMug, discount, onConfirmed, onBack }) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [name, setName] = useState('')
+  const [cardComplete, setCardComplete] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handlePay = async () => {
+    setError('')
+    if (!name.trim()) { setError('Please enter cardholder name.'); return }
+    if (!cardComplete) { setError('Please complete your card details.'); return }
+    if (!stripe || !elements) { setError('Stripe not loaded yet.'); return }
+
+    setLoading(true)
+    const cardEl = elements.getElement(CardElement)
+    const { error: stripeErr, token } = await stripe.createToken(cardEl, { name })
+    setLoading(false)
+
+    if (stripeErr) { setError(stripeErr.message); return }
+    // Token created — backend will charge it when ready
+    onConfirmed(token)
+  }
+
+  return (
+    <div className="payment-form">
+      <div className="payment-summary">
+        <p className="payment-label">TOTAL TO PAY</p>
+        <h2 className="payment-total">${Math.round(total)}</h2>
+        {hasMug && <p className="discount-note">15% mug discount — saved ${Math.round(discount)}</p>}
+        <p className="stars-earn-note">You will earn {itemCount} stars</p>
+      </div>
+      <div className="stripe-form">
+        <p className="stripe-label">Card details</p>
+        <input
+          className="stripe-input"
+          placeholder="Cardholder name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+        <div className="stripe-card-element">
+          <CardElement
+            options={{
+              style: {
+                base: { fontSize: '15px', color: '#1c100a', fontFamily: 'Inter, sans-serif',
+                  '::placeholder': { color: '#9a8b7e' } },
+                invalid: { color: '#c06060' }
+              }
+            }}
+            onChange={e => setCardComplete(e.complete)}
+          />
+        </div>
+        {error && <p className="stripe-error">{error}</p>}
+      </div>
+      <button
+        className="place-order-btn"
+        onClick={handlePay}
+        disabled={loading}
+        style={{ opacity: loading ? 0.7 : 1 }}
+      >
+        {loading ? 'Processing...' : `Pay $${Math.round(total)}`}
+      </button>
+      <p className="stripe-note">Secured by Stripe</p>
+    </div>
+  )
+}
+
+function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder, user }) {
   const [step, setStep] = useState('cart')
-  const [cardForm, setCardForm] = useState({ number: '', expiry: '', cvv: '', name: '' })
   const [starsEarned, setStarsEarned] = useState(0)
   const [orderTotal, setOrderTotal] = useState(0)
+  const [freeRewardApplied, setFreeRewardApplied] = useState(false)
 
   const hasMug = cart.some(i => i.category === 'mug')
   const subtotal = cart.reduce((s, i) => {
-    const milkExtra = i.milkType && i.milkType !== 'regular' ? 5 : 0
+    const milkExtra = i.milkType && i.milkType !== 'entera' ? 5 : 0
     return s + (i.price + milkExtra) * i.quantity
   }, 0)
   const discount = hasMug ? subtotal * 0.15 : 0
-  const total = subtotal - discount
-  const itemCount = cart.reduce((s, i) => s + i.quantity, 0)
 
-  const handlePay = () => {
+  // Free drink reward: find most expensive drink in cart
+  const drinkItems = cart.filter(i => i.category === 'drink')
+  const freeDrink = drinkItems.reduce((max, item) => {
+    const p = item.price + (item.milkType && item.milkType !== 'entera' ? 5 : 0)
+    const mp = max ? max.price + (max.milkType && max.milkType !== 'entera' ? 5 : 0) : 0
+    return p > mp ? item : max
+  }, null)
+  const freeRewardDiscount = (freeRewardApplied && freeDrink)
+    ? freeDrink.price + (freeDrink.milkType && freeDrink.milkType !== 'entera' ? 5 : 0)
+    : 0
+
+  const total = subtotal - discount - freeRewardDiscount
+  const itemCount = cart.reduce((s, i) => s + i.quantity, 0)
+  const hasFreeReward = (user?.freeProducts || 0) > 0
+
+  const handleConfirmed = (token) => {
     setStarsEarned(itemCount)
     setOrderTotal(total)
     setStep('confirmed')
@@ -380,7 +465,7 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder }) {
         <h2>Order placed!</h2>
         <p className="confirmed-stars">You earned <strong>{starsEarned} stars</strong></p>
         <p className="confirmed-sub">Total paid: ${Math.round(orderTotal)}</p>
-        <button className="place-order-btn" onClick={() => { onPlaceOrder(starsEarned, orderTotal); setStep('cart') }}>
+        <button className="place-order-btn" onClick={() => { onPlaceOrder(starsEarned, orderTotal, freeRewardApplied); setStep('cart'); setFreeRewardApplied(false) }}>
           Done
         </button>
       </div>
@@ -390,29 +475,16 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder }) {
   if (step === 'payment') return (
     <div className="screen order-screen">
       <TopNav title="Payment" onBack={() => setStep('cart')} />
-      <div className="payment-form">
-        <div className="payment-summary">
-          <p className="payment-label">Total to pay</p>
-          <h2 className="payment-total">${Math.round(total)}</h2>
-          {hasMug && <p className="discount-note">15% mug discount — saved ${Math.round(discount)}</p>}
-          <p className="stars-earn-note">You will earn {itemCount} stars</p>
-        </div>
-        <div className="stripe-form">
-          <p className="stripe-label">Card details</p>
-          <input className="stripe-input" placeholder="Cardholder name" value={cardForm.name}
-            onChange={e => setCardForm({ ...cardForm, name: e.target.value })} />
-          <input className="stripe-input" placeholder="Card number" maxLength="19" value={cardForm.number}
-            onChange={e => setCardForm({ ...cardForm, number: e.target.value })} />
-          <div className="stripe-row">
-            <input className="stripe-input half" placeholder="MM/YY" maxLength="5" value={cardForm.expiry}
-              onChange={e => setCardForm({ ...cardForm, expiry: e.target.value })} />
-            <input className="stripe-input half" placeholder="CVV" maxLength="3" value={cardForm.cvv}
-              onChange={e => setCardForm({ ...cardForm, cvv: e.target.value })} />
-          </div>
-        </div>
-        <button className="place-order-btn" onClick={handlePay}>Pay ${Math.round(total)}</button>
-        <p className="stripe-note">Secured by Stripe</p>
-      </div>
+      <Elements stripe={stripePromise}>
+        <PaymentForm
+          total={total}
+          itemCount={itemCount}
+          hasMug={hasMug}
+          discount={discount}
+          onConfirmed={handleConfirmed}
+          onBack={() => setStep('cart')}
+        />
+      </Elements>
     </div>
   )
 
@@ -452,9 +524,26 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder }) {
           )
         })}
       </div>
+      {hasFreeReward && drinkItems.length > 0 && (
+        <div className={`free-reward-banner ${freeRewardApplied ? 'applied' : ''}`}
+          onClick={() => setFreeRewardApplied(r => !r)}>
+          <div className="free-reward-text">
+            <p className="free-reward-title">Free drink reward</p>
+            <p className="free-reward-sub">
+              {freeRewardApplied
+                ? `Applied — ${freeDrink?.name} is free`
+                : 'Tap to apply to your most expensive drink'}
+            </p>
+          </div>
+          <span className="free-reward-check">{freeRewardApplied ? '✓' : '+'}</span>
+        </div>
+      )}
       <div className="order-summary">
         <div className="summary-row"><span>Subtotal</span><span>${Math.round(subtotal)}</span></div>
         {hasMug && <div className="summary-row discount"><span>Mug discount (15%)</span><span>-${Math.round(discount)}</span></div>}
+        {freeRewardApplied && freeDrink && (
+          <div className="summary-row discount"><span>Free drink 🎁</span><span>-${Math.round(freeRewardDiscount)}</span></div>
+        )}
         <div className="summary-row total-row"><span>Total</span><span>${Math.round(total)}</span></div>
         <p className="stars-earn-note">You will earn {itemCount} stars with this order</p>
         <button className="place-order-btn" onClick={() => setStep('payment')}>
@@ -468,27 +557,17 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder }) {
 // ══════════════════════════════════════════════════════════
 // REWARDS SCREEN
 // ══════════════════════════════════════════════════════════
-function RewardsScreen({ user, onRedeemCode, onClaimFreeProduct }) {
-  const [code, setCode] = useState('')
-  const [msg, setMsg] = useState(null)
+function RewardsScreen({ user, onNavigate }) {
   const stars = user?.stars || 0
   const pct = Math.min((stars / STARS_GOAL) * 100, 100)
-
-  const handleRedeem = () => {
-    if (!code) return
-    const upper = code.toUpperCase().trim()
-    if (!VALID_CODES.includes(upper)) { setMsg({ type: 'error', text: 'Invalid code' }); return }
-    if (user?.usedCodes?.includes(upper)) { setMsg({ type: 'error', text: 'Code already used' }); return }
-    onRedeemCode(upper)
-    setCode('')
-    setMsg({ type: 'success', text: '+10 stars added!' })
-    setTimeout(() => setMsg(null), 3000)
-  }
+  const rewardsHistory = user?.rewardsHistory || []
 
   return (
     <div className="screen rewards-screen">
       <TopNav title="Brew Rewards" />
       <div className="rewards-scroll">
+
+        {/* Stars card */}
         <div className="rewards-stars-card">
           <div className="rewards-stars-top">
             <div className="rewards-star-icon"><IconStarNav /></div>
@@ -504,38 +583,63 @@ function RewardsScreen({ user, onRedeemCode, onClaimFreeProduct }) {
             <span>0</span>
             <span>{STARS_GOAL} = free drink</span>
           </div>
+          <p className="stars-hint" style={{marginTop: 8}}>{Math.max(STARS_GOAL - stars, 0)} more stars for a free drink</p>
         </div>
 
+        {/* Free drink redirect */}
         {(user?.freeProducts || 0) > 0 && (
           <div className="free-product-card">
-            <p>You have {user.freeProducts} free drink{user.freeProducts > 1 ? 's' : ''}!</p>
-            <button className="claim-btn" onClick={onClaimFreeProduct}>Claim reward</button>
+            <div className="free-product-info">
+              <p style={{fontWeight:600, fontSize:14}}>Free drink available</p>
+              <p style={{fontSize:12, color:'var(--muted)', marginTop:3}}>
+                {user.freeProducts} reward{user.freeProducts > 1 ? 's' : ''} — apply in your order
+              </p>
+            </div>
+            <button className="claim-btn" onClick={() => onNavigate('order')}>
+              Use now
+            </button>
           </div>
         )}
 
+        {/* How it works */}
         <div className="code-section">
-          <h3 className="code-title">Enter a code</h3>
-          <p className="code-sub">Get a code when you purchase at the cafe. Each code gives +10 stars.</p>
-          <div className="code-input-row">
-            <input className="code-input" placeholder="e.g. BREW2026" value={code}
-              onChange={e => setCode(e.target.value.toUpperCase())}
-              onKeyDown={e => e.key === 'Enter' && handleRedeem()} />
-            <button className="code-btn" onClick={handleRedeem}>Apply</button>
+          <h3 className="code-title">How it works</h3>
+          <div className="how-it-works">
+            <div className="hiw-row">
+              <div className="hiw-num">1</div>
+              <p>Place an order in the app</p>
+            </div>
+            <div className="hiw-row">
+              <div className="hiw-num">2</div>
+              <p>Earn 1 star per item ordered</p>
+            </div>
+            <div className="hiw-row">
+              <div className="hiw-num">3</div>
+              <p>Reach {STARS_GOAL} stars and get a free drink</p>
+            </div>
           </div>
-          {msg && <p className={`code-msg ${msg.type}`}>{msg.text}</p>}
         </div>
 
-        {user?.orderHistory?.length > 0 && (
-          <div className="rewards-history">
-            <h3 className="code-title">Star history</h3>
-            {user.orderHistory.slice().reverse().map((o, i) => (
+        {/* Rewards history */}
+        <div className="rewards-history">
+          <h3 className="code-title">Activity</h3>
+          {rewardsHistory.length === 0 ? (
+            <p style={{fontSize:13, color:'var(--muted)', padding:'8px 0'}}>No activity yet — place your first order!</p>
+          ) : (
+            rewardsHistory.slice().reverse().map((r, i) => (
               <div key={i} className="history-row">
-                <span className="history-date">{new Date(o.date).toLocaleDateString()}</span>
-                <span className="history-stars">+{o.stars} stars</span>
+                <div>
+                  <p className="history-date">{new Date(r.date).toLocaleDateString()}</p>
+                  <p style={{fontSize:12, color:'var(--muted)'}}>{r.type === 'earned' ? `${r.itemCount} item order` : 'Free drink redeemed'}</p>
+                </div>
+                <span className={`history-stars ${r.type === 'redeemed' ? 'redeemed' : ''}`}>
+                  {r.type === 'earned' ? `+${r.stars} stars` : '🎉 Redeemed'}
+                </span>
               </div>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
+
       </div>
     </div>
   )
@@ -706,7 +810,7 @@ export default function App() {
     )
   }
 
-  const handlePlaceOrder = (starsEarned, total) => {
+  const handlePlaceOrder = (starsEarned, total, usedFreeReward = false) => {
     if (!user) return
     const orderEntry = {
       date: Date.now(),
@@ -717,11 +821,18 @@ export default function App() {
     const newStars = (user.stars || 0) + starsEarned
     const newFreeProducts = Math.floor(newStars / STARS_GOAL)
     const remainingStars = newStars % STARS_GOAL
+    const rewardsEntry = {
+      date: Date.now(),
+      type: 'earned',
+      stars: starsEarned,
+      itemCount: cart.reduce((s, i) => s + i.quantity, 0),
+    }
     saveUser({
       ...user,
       stars: remainingStars,
-      freeProducts: (user.freeProducts || 0) + newFreeProducts,
+      freeProducts: Math.max(0, (user.freeProducts || 0) + newFreeProducts - (usedFreeReward ? 1 : 0)),
       orderHistory: [...(user.orderHistory || []), orderEntry],
+      rewardsHistory: [...(user.rewardsHistory || []), rewardsEntry],
     })
     setCart([])
   }
@@ -736,13 +847,22 @@ export default function App() {
 
   const handleClaimFreeProduct = () => {
     if ((user.freeProducts || 0) > 0) {
-      saveUser({ ...user, freeProducts: user.freeProducts - 1 })
+      const rewardsEntry = { date: Date.now(), type: 'redeemed' }
+      saveUser({
+        ...user,
+        freeProducts: user.freeProducts - 1,
+        rewardsHistory: [...(user.rewardsHistory || []), rewardsEntry],
+      })
     }
   }
 
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0)
 
-  if (screen === 'login') return <LoginScreen onLogin={handleLogin} />
+  if (screen === 'login') return (
+    <div className="app-shell">
+      <LoginScreen onLogin={handleLogin} />
+    </div>
+  )
 
   return (
     <div className="app-shell">
@@ -759,7 +879,7 @@ export default function App() {
         <OrderScreen cart={cart} onUpdateQuantity={handleUpdateQuantity} onPlaceOrder={handlePlaceOrder} user={user} />
       )}
       {screen === 'rewards' && (
-        <RewardsScreen user={user} onRedeemCode={handleRedeemCode} onClaimFreeProduct={handleClaimFreeProduct} />
+        <RewardsScreen user={user} onNavigate={setScreen} />
       )}
       {screen === 'account' && (
         <AccountScreen user={user} onSignOut={handleSignOut} onUpdateUser={saveUser} />
