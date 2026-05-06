@@ -37,6 +37,7 @@ jobs:
         run: npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_STRIPE_PUBLIC_KEY: ${{ secrets.VITE_STRIPE_PUBLIC_KEY }}
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
