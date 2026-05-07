@@ -41,7 +41,7 @@ const FOOD_VISUALS = {
 // Merge backend items with local visual data
 function mergeVisuals(items, lookup, category) {
   return items.map((item, i) => ({
-    id:       item.id ?? (i + 1),
+    id:       item._id || item.id || (i + 1),
     name:     item.name,
     desc:     item.description || item.desc || '',
     price:    item.price,
@@ -123,9 +123,15 @@ const Img = ({ gradient, imgName, className }) => {
 }
 
 // ── Top Nav ────────────────────────────────────────────────
-const TopNav = ({ title, cartCount, onCartClick, onBack }) => (
+const TopNav = ({ title, cartCount, onCartClick, onBack, stars }) => (
   <div className="topnav">
     {onBack && <button className="back-btn" onClick={onBack}>←</button>}
+    {stars !== undefined && (
+      <div className="topnav-stars">
+        <IconStarNav />
+        <span>{stars}</span>
+      </div>
+    )}
     <span className="topnav-logo">{title || 'Brew & Co.'}</span>
     {cartCount > 0 && (
       <button className="cart-badge-btn" onClick={onCartClick}>
@@ -239,7 +245,7 @@ function HomeScreen({ user, favorites, cart, onNavigate, onToggleFavorite, onAdd
 
   return (
     <div className="screen home-screen">
-      <TopNav cartCount={cartCount} onCartClick={() => onNavigate('order')} />
+      <TopNav cartCount={cartCount} onCartClick={() => onNavigate('order')} stars={user?.stars || 0} />
       <div className="home-scroll">
         <div className="home-header">
           <div>
@@ -343,14 +349,14 @@ function MilkModal({ product, onClose, onAdd }) {
 // ══════════════════════════════════════════════════════════
 // PRODUCTS SCREEN
 // ══════════════════════════════════════════════════════════
-function ProductsScreen({ favorites, cart, onToggleFavorite, onAddToCart, cartCount, onCartClick, drinks = [], mugs = [], foods = [] }) {
+function ProductsScreen({ user, favorites, cart, onToggleFavorite, onAddToCart, cartCount, onCartClick, drinks = [], mugs = [], foods = [] }) {
   const [tab, setTab] = useState('drinks')
   const items = tab === 'drinks' ? drinks : tab === 'mugs' ? mugs : foods
   const cartQty = (id) => cart.filter(i => i.id === id).reduce((s, i) => s + i.quantity, 0)
 
   return (
     <div className="screen products-screen">
-      <TopNav title="Menu" cartCount={cartCount} onCartClick={onCartClick} />
+      <TopNav title="Menu" cartCount={cartCount} onCartClick={onCartClick} stars={user?.stars || 0} />
       <div className="prod-tabs">
         {['drinks', 'mugs', 'foods'].map(t => (
           <button key={t} className={`prod-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
@@ -421,7 +427,7 @@ function PaymentForm({ total, itemCount, hasMug, discount, onConfirmed, onBack }
         <p className="payment-label">TOTAL TO PAY</p>
         <h2 className="payment-total">${Math.round(total)}</h2>
         {hasMug && <p className="discount-note">15% mug discount — saved ${Math.round(discount)}</p>}
-        <p className="stars-earn-note">You will earn {itemCount} stars</p>
+        <p className="stars-earn-note">You will earn {Math.floor(total / 5)} stars</p>
       </div>
       <div className="stripe-form">
         <p className="stripe-label">Card details</p>
@@ -489,14 +495,14 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder, user }) {
   const hasFreeReward = (user?.freeProducts || 0) > 0
 
   const handleConfirmed = (token) => {
-    setStarsEarned(itemCount)
+    setStarsEarned(Math.floor(total / 5))
     setOrderTotal(total)
     setStep('confirmed')
   }
 
   if (step === 'confirmed') return (
     <div className="screen order-screen">
-      <TopNav title="Order Confirmed" />
+      <TopNav title="Order Confirmed" stars={user?.stars || 0} />
       <div className="confirmed-view">
         <div className="confirmed-icon">✓</div>
         <h2>Order placed!</h2>
@@ -511,7 +517,7 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder, user }) {
 
   if (step === 'payment') return (
     <div className="screen order-screen">
-      <TopNav title="Payment" onBack={() => setStep('cart')} />
+      <TopNav title="Payment" onBack={() => setStep('cart')} stars={user?.stars || 0} />
       <Elements stripe={stripePromise}>
         <PaymentForm
           total={total}
@@ -527,7 +533,7 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder, user }) {
 
   if (cart.length === 0) return (
     <div className="screen order-screen">
-      <TopNav title="Your Order" />
+      <TopNav title="Your Order" stars={user?.stars || 0} />
       <div className="empty-cart">
         <IconBag />
         <p>Your cart is empty</p>
@@ -538,7 +544,7 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder, user }) {
 
   return (
     <div className="screen order-screen">
-      <TopNav title="Your Order" />
+      <TopNav title="Your Order" stars={user?.stars || 0} />
       <div className="order-list">
         {cart.map((item, idx) => {
           const milkExtra = item.milkType && item.milkType !== 'regular' ? 5 : 0
@@ -582,7 +588,7 @@ function OrderScreen({ cart, onUpdateQuantity, onPlaceOrder, user }) {
           <div className="summary-row discount"><span>Free drink 🎁</span><span>-${Math.round(freeRewardDiscount)}</span></div>
         )}
         <div className="summary-row total-row"><span>Total</span><span>${Math.round(total)}</span></div>
-        <p className="stars-earn-note">You will earn {itemCount} stars with this order</p>
+        <p className="stars-earn-note">You will earn {Math.floor(total / 5)} stars with this order</p>
         <button className="place-order-btn" onClick={() => setStep('payment')}>
           Checkout — ${Math.round(total)}
         </button>
@@ -601,7 +607,7 @@ function RewardsScreen({ user, onNavigate }) {
 
   return (
     <div className="screen rewards-screen">
-      <TopNav title="Brew Rewards" />
+      <TopNav title="Brew Rewards" stars={user?.stars || 0} />
       <div className="rewards-scroll">
 
         {/* Stars card */}
@@ -640,7 +646,12 @@ function RewardsScreen({ user, onNavigate }) {
 
         {/* How it works */}
         <div className="code-section">
-          <h3 className="code-title">How it works</h3>
+          <h3 className="code-title">Store Code</h3>
+          <div className="store-code-box">
+            <p className="store-code-text">{user?.storeCode || 'Generating...'}</p>
+            <p className="store-code-hint">Show this code at the register</p>
+          </div>
+          <h3 className="code-title" style={{ marginTop: 24 }}>How it works</h3>
           <div className="how-it-works">
             <div className="hiw-row">
               <div className="hiw-num">1</div>
@@ -648,7 +659,7 @@ function RewardsScreen({ user, onNavigate }) {
             </div>
             <div className="hiw-row">
               <div className="hiw-num">2</div>
-              <p>Earn 1 star per item ordered</p>
+              <p>Earn 1 star per $5 spent</p>
             </div>
             <div className="hiw-row">
               <div className="hiw-num">3</div>
@@ -706,9 +717,23 @@ function AccountScreen({ user, onSignOut, onUpdateUser }) {
     setTimeout(() => setPwMsg(''), 3000)
   }
 
+  const deleteAccount = async () => {
+    const confirmDelete = window.confirm("Are you sure you want to delete your account? All your data will be permanently lost and cannot be recovered.");
+    if (confirmDelete) {
+      if (user?._id) {
+        try {
+          await fetch(`${API}/user/${user._id}`, { method: 'DELETE' });
+        } catch (e) {
+          console.error('Failed to delete account:', e);
+        }
+      }
+      onSignOut();
+    }
+  }
+
   return (
     <div className="screen account-screen">
-      <TopNav title="Account" />
+      <TopNav title="Account" stars={user?.stars || 0} />
       <div className="account-scroll">
         <div className="account-section">
           <div className="account-section-header">
@@ -763,6 +788,7 @@ function AccountScreen({ user, onSignOut, onUpdateUser }) {
         </div>
 
         <button className="signout-btn" onClick={onSignOut}>Sign Out</button>
+        <button className="delete-account-btn" onClick={deleteAccount}>Delete Account</button>
       </div>
     </div>
   )
@@ -947,7 +973,7 @@ export default function App() {
           onNavigate={setScreen} onToggleFavorite={handleToggleFavorite} onAddToCart={handleAddToCart} />
       )}
       {screen === 'products' && (
-        <ProductsScreen favorites={favorites} cart={cart} cartCount={cartCount} drinks={drinks} mugs={mugs} foods={foods}
+        <ProductsScreen user={user} favorites={favorites} cart={cart} cartCount={cartCount} drinks={drinks} mugs={mugs} foods={foods}
           onToggleFavorite={handleToggleFavorite} onAddToCart={handleAddToCart}
           onCartClick={() => setScreen('order')} />
       )}
