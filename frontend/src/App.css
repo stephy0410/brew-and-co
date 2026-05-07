@@ -326,6 +326,7 @@ body {
 }
 
 .redeem-btn {
+  position: relative;
   background: var(--gold);
   color: var(--brown);
   border: none;
@@ -334,6 +335,17 @@ body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.redeem-badge {
+  position: absolute;
+  top: -5px;
+  right: -2px;
+  width: 15px;
+  height: 15px;
+  background: var(--gold);
+  border: 1.5px solid var(--cream);
+  border-radius: 50%;
 }
 
 .stars-bar-bg {
