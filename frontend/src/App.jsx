@@ -260,7 +260,10 @@ function HomeScreen({ user, favorites, cart, onNavigate, onToggleFavorite, onAdd
               <p className="stars-label">Brew Stars</p>
               <p className="stars-count"><span>{stars}</span> / {STARS_GOAL}</p>
             </div>
-            <button className="redeem-btn" onClick={() => onNavigate('rewards')}>Redeem</button>
+            <button className="redeem-btn" onClick={() => onNavigate('rewards')}>
+              Redeem
+              {user?.freeProducts > 0 && <span className="redeem-badge" />}
+            </button>
           </div>
           <div className="stars-bar-bg">
             <div className="stars-bar-fill" style={{ width: `${pct}%` }} />
@@ -779,7 +782,7 @@ function AccountScreen({ user, onSignOut, onUpdateUser }) {
                   <p className="oh-items">{o.itemCount} item{o.itemCount > 1 ? 's' : ''}</p>
                 </div>
                 <div className="oh-right">
-                  <p className="oh-total">${o.total}</p>
+                  <p className="oh-total">{o.total === 0 ? 'Free drink 🎁' : `$${o.total}`}</p>
                   <p className="oh-stars">+{o.stars} stars</p>
                 </div>
               </div>
