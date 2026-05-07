@@ -16,66 +16,99 @@ const MILK_OPTIONS = [
 ]
 const VALID_CODES = ['BREW2026', 'COFFEE1', 'STAR10', 'BREW100']
 
-// ── Data ───────────────────────────────────────────────────
-const drinks = [
+// ── API & visual lookup (images are served locally) ────────
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+const DRINK_VISUALS = {
+  'Star Latte':   { gradient: 'linear-gradient(135deg,#8a6040,#c4956a)', img: 'star-latte.jpg' },
+  'Cappuccino':   { gradient: 'linear-gradient(135deg,#6b4c35,#a07850)', img: 'cappuccino.jpg' },
+  'Cold Brew':    { gradient: 'linear-gradient(135deg,#1c2a3a,#2e4560)', img: 'cold-brew.jpg' },
+  'Iced Matcha':  { gradient: 'linear-gradient(135deg,#6b8e5e,#9cb887)', img: 'iced-matcha.jpg' },
+}
+const MUG_VISUALS = {
+  'Purple Flower Mug': { gradient: 'linear-gradient(135deg,#7b6da0,#a090c4)', img: 'mug-purple.jpg' },
+  'Blue Star Mug':     { gradient: 'linear-gradient(135deg,#5a7aab,#7a9acb)', img: 'mug-blue.jpg' },
+  'Pink Lily Mug':     { gradient: 'linear-gradient(135deg,#c48090,#d8a0b0)', img: 'mug-pink.jpg' },
+  'Tulip Mug':         { gradient: 'linear-gradient(135deg,#c8906a,#e0b090)', img: 'mug-tulip.jpg' },
+}
+const FOOD_VISUALS = {
+  'Cinnamon Roll':       { gradient: 'linear-gradient(135deg,#b87840,#d49860)', img: 'cinnamon-roll.jpg' },
+  'Choco Chip Muffin':   { gradient: 'linear-gradient(135deg,#7a5030,#9a7050)', img: 'choco-muffin.jpg' },
+  'Choco Chunk Cookies': { gradient: 'linear-gradient(135deg,#9a7845,#c8a06a)', img: 'cookies.jpg' },
+  'Salmon Avocado Toast':{ gradient: 'linear-gradient(135deg,#c87060,#e09080)', img: 'salmon-toast.jpg' },
+}
+
+// Merge backend items with local visual data
+function mergeVisuals(items, lookup, category) {
+  return items.map((item, i) => ({
+    id:       item.id ?? (i + 1),
+    name:     item.name,
+    desc:     item.description || item.desc || '',
+    price:    item.price,
+    category,
+    ...(lookup[item.name] || { gradient: 'linear-gradient(135deg,#8a6040,#c4956a)', img: '' }),
+  }))
+}
+
+// Static fallbacks used when the backend is unreachable
+const FALLBACK_DRINKS = [
   { id: 1, name: 'Star Latte', desc: 'Iced', price: 89, gradient: 'linear-gradient(135deg,#8a6040,#c4956a)', img: 'star-latte.jpg', category: 'drink' },
   { id: 2, name: 'Cappuccino', desc: 'Hot', price: 75, gradient: 'linear-gradient(135deg,#6b4c35,#a07850)', img: 'cappuccino.jpg', category: 'drink' },
   { id: 3, name: 'Cold Brew', desc: 'Iced', price: 79, gradient: 'linear-gradient(135deg,#1c2a3a,#2e4560)', img: 'cold-brew.jpg', category: 'drink' },
   { id: 4, name: 'Iced Matcha', desc: 'Iced', price: 85, gradient: 'linear-gradient(135deg,#6b8e5e,#9cb887)', img: 'iced-matcha.jpg', category: 'drink' },
 ]
-const mugs = [
+const FALLBACK_MUGS = [
   { id: 5, name: 'Purple Flower Mug', price: 380, gradient: 'linear-gradient(135deg,#7b6da0,#a090c4)', img: 'mug-purple.jpg', category: 'mug' },
   { id: 6, name: 'Blue Star Mug', price: 380, gradient: 'linear-gradient(135deg,#5a7aab,#7a9acb)', img: 'mug-blue.jpg', category: 'mug' },
   { id: 7, name: 'Pink Lily Mug', price: 380, gradient: 'linear-gradient(135deg,#c48090,#d8a0b0)', img: 'mug-pink.jpg', category: 'mug' },
   { id: 8, name: 'Tulip Mug', price: 380, gradient: 'linear-gradient(135deg,#c8906a,#e0b090)', img: 'mug-tulip.jpg', category: 'mug' },
 ]
-const foods = [
-  { id: 9, name: 'Cinnamon Roll', desc: 'Warm, glazed, freshly baked', price: 65, gradient: 'linear-gradient(135deg,#b87840,#d49860)', img: 'cinnamon-roll.jpg', category: 'food' },
+const FALLBACK_FOODS = [
+  { id: 9,  name: 'Cinnamon Roll', desc: 'Warm, glazed, freshly baked', price: 65, gradient: 'linear-gradient(135deg,#b87840,#d49860)', img: 'cinnamon-roll.jpg', category: 'food' },
   { id: 10, name: 'Choco Chip Muffin', desc: 'Double chocolate chips', price: 55, gradient: 'linear-gradient(135deg,#7a5030,#9a7050)', img: 'choco-muffin.jpg', category: 'food' },
   { id: 11, name: 'Choco Chunk Cookies', desc: 'Crispy edges, soft center', price: 58, gradient: 'linear-gradient(135deg,#9a7845,#c8a06a)', img: 'cookies.jpg', category: 'food' },
   { id: 12, name: 'Salmon Avocado Toast', desc: 'Smoked salmon, cream cheese', price: 95, gradient: 'linear-gradient(135deg,#c87060,#e09080)', img: 'salmon-toast.jpg', category: 'food' },
 ]
-const allProducts = [...drinks, ...mugs, ...foods]
 
 // ── SVG Icons ──────────────────────────────────────────────
 const IconHome = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
   </svg>
 )
 const IconBag = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
+    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" />
   </svg>
 )
 const IconCoffee = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
+    <path d="M18 8h1a4 4 0 010 8h-1" /><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" /><line x1="6" y1="1" x2="6" y2="4" /><line x1="10" y1="1" x2="10" y2="4" /><line x1="14" y1="1" x2="14" y2="4" />
   </svg>
 )
 const IconStarNav = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="0.5">
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
   </svg>
 )
 const IconUser = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
   </svg>
 )
 const IconHeart = ({ filled }) => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? '#c9a96e' : 'none'} stroke={filled ? '#c9a96e' : 'currentColor'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
   </svg>
 )
 const IconPlus = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 )
 const IconMinus = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-    <line x1="5" y1="12" x2="19" y2="12"/>
+    <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 )
 
@@ -84,7 +117,7 @@ const Img = ({ gradient, imgName, className }) => {
   const [err, setErr] = useState(false)
   if (err) return <div className={`img-ph ${className || ''}`} style={{ background: gradient }} />
   return (
-    <img src={`/${imgName}`} alt="" className={className || ''} 
+    <img src={`/${imgName}`} alt="" className={className || ''}
       style={{ objectFit: 'cover', display: 'block' }} onError={() => setErr(true)} />
   )
 }
@@ -135,32 +168,34 @@ function LoginScreen({ onLogin }) {
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.email || !form.password) { setError('Please fill in all fields'); return }
+    setError('')
     if (tab === 'register') {
       if (!form.name) { setError('Name is required'); return }
-      const existing = JSON.parse(localStorage.getItem('brew_users') || '[]')
-      if (existing.find(u => u.email === form.email)) { setError('Email already registered'); return }
-      const newUser = {
-        id: Date.now(),
-        name: form.name,
-        email: form.email,
-        password: form.password,
-        stars: 0,
-        orderHistory: [],
-        usedCodes: [],
-        freeProducts: 0,
-        favorites: [],
-      }
-      localStorage.setItem('brew_users', JSON.stringify([...existing, newUser]))
-      localStorage.setItem('brew_user', JSON.stringify(newUser))
-      onLogin(newUser)
+      try {
+        const r = await fetch(`${API}/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
+        })
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error || 'Registration failed')
+        localStorage.setItem('brew_user', JSON.stringify(data))
+        onLogin(data)
+      } catch (e) { setError(e.message) }
     } else {
-      const existing = JSON.parse(localStorage.getItem('brew_users') || '[]')
-      const user = existing.find(u => u.email === form.email && u.password === form.password)
-      if (!user) { setError('Invalid email or password'); return }
-      localStorage.setItem('brew_user', JSON.stringify(user))
-      onLogin(user)
+      try {
+        const r = await fetch(`${API}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: form.email, password: form.password }),
+        })
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error || 'Invalid email or password')
+        localStorage.setItem('brew_user', JSON.stringify(data))
+        onLogin(data)
+      } catch (e) { setError(e.message) }
     }
   }
 
@@ -196,7 +231,7 @@ function LoginScreen({ onLogin }) {
 // ══════════════════════════════════════════════════════════
 // HOME SCREEN
 // ══════════════════════════════════════════════════════════
-function HomeScreen({ user, favorites, cart, onNavigate, onToggleFavorite, onAddToCart }) {
+function HomeScreen({ user, favorites, cart, onNavigate, onToggleFavorite, onAddToCart, drinks = [], allProducts = [] }) {
   const favProducts = allProducts.filter(p => favorites.includes(p.id))
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0)
   const stars = user?.stars || 0
@@ -308,7 +343,7 @@ function MilkModal({ product, onClose, onAdd }) {
 // ══════════════════════════════════════════════════════════
 // PRODUCTS SCREEN
 // ══════════════════════════════════════════════════════════
-function ProductsScreen({ favorites, cart, onToggleFavorite, onAddToCart, cartCount, onCartClick }) {
+function ProductsScreen({ favorites, cart, onToggleFavorite, onAddToCart, cartCount, onCartClick, drinks = [], mugs = [], foods = [] }) {
   const [tab, setTab] = useState('drinks')
   const items = tab === 'drinks' ? drinks : tab === 'mugs' ? mugs : foods
   const cartQty = (id) => cart.filter(i => i.id === id).reduce((s, i) => s + i.quantity, 0)
@@ -400,8 +435,10 @@ function PaymentForm({ total, itemCount, hasMug, discount, onConfirmed, onBack }
           <CardElement
             options={{
               style: {
-                base: { fontSize: '15px', color: '#1c100a', fontFamily: 'Inter, sans-serif',
-                  '::placeholder': { color: '#9a8b7e' } },
+                base: {
+                  fontSize: '15px', color: '#1c100a', fontFamily: 'Inter, sans-serif',
+                  '::placeholder': { color: '#9a8b7e' }
+                },
                 invalid: { color: '#c06060' }
               }
             }}
@@ -583,15 +620,15 @@ function RewardsScreen({ user, onNavigate }) {
             <span>0</span>
             <span>{STARS_GOAL} = free drink</span>
           </div>
-          <p className="stars-hint" style={{marginTop: 8}}>{Math.max(STARS_GOAL - stars, 0)} more stars for a free drink</p>
+          <p className="stars-hint" style={{ marginTop: 8 }}>{Math.max(STARS_GOAL - stars, 0)} more stars for a free drink</p>
         </div>
 
         {/* Free drink redirect */}
         {(user?.freeProducts || 0) > 0 && (
           <div className="free-product-card">
             <div className="free-product-info">
-              <p style={{fontWeight:600, fontSize:14}}>Free drink available</p>
-              <p style={{fontSize:12, color:'var(--muted)', marginTop:3}}>
+              <p style={{ fontWeight: 600, fontSize: 14 }}>Free drink available</p>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
                 {user.freeProducts} reward{user.freeProducts > 1 ? 's' : ''} — apply in your order
               </p>
             </div>
@@ -624,13 +661,13 @@ function RewardsScreen({ user, onNavigate }) {
         <div className="rewards-history">
           <h3 className="code-title">Activity</h3>
           {rewardsHistory.length === 0 ? (
-            <p style={{fontSize:13, color:'var(--muted)', padding:'8px 0'}}>No activity yet — place your first order!</p>
+            <p style={{ fontSize: 13, color: 'var(--muted)', padding: '8px 0' }}>No activity yet — place your first order!</p>
           ) : (
             rewardsHistory.slice().reverse().map((r, i) => (
               <div key={i} className="history-row">
                 <div>
                   <p className="history-date">{new Date(r.date).toLocaleDateString()}</p>
-                  <p style={{fontSize:12, color:'var(--muted)'}}>{r.type === 'earned' ? `${r.itemCount} item order` : 'Free drink redeemed'}</p>
+                  <p style={{ fontSize: 12, color: 'var(--muted)' }}>{r.type === 'earned' ? `${r.itemCount} item order` : 'Free drink redeemed'}</p>
                 </div>
                 <span className={`history-stars ${r.type === 'redeemed' ? 'redeemed' : ''}`}>
                   {r.type === 'earned' ? `+${r.stars} stars` : '🎉 Redeemed'}
@@ -741,22 +778,52 @@ export default function App() {
   const [favorites, setFavorites] = useState([])
   const [milkModal, setMilkModal] = useState(null)
 
+  // ── Product data from API ──────────────────────────────
+  const [drinks, setDrinks] = useState(FALLBACK_DRINKS)
+  const [mugs,   setMugs]   = useState(FALLBACK_MUGS)
+  const [foods,  setFoods]  = useState(FALLBACK_FOODS)
+  const allProducts = [...drinks, ...mugs, ...foods]
+
   useEffect(() => {
+    // Load products from backend (silently falls back to static data)
+    fetch(`${API}/drinks`).then(r => r.json()).then(d => setDrinks(mergeVisuals(d, DRINK_VISUALS, 'drink'))).catch(() => {})
+    fetch(`${API}/mugs`).then(r => r.json()).then(d => setMugs(mergeVisuals(d, MUG_VISUALS, 'mug'))).catch(() => {})
+    fetch(`${API}/foods`).then(r => r.json()).then(d => setFoods(mergeVisuals(d, FOOD_VISUALS, 'food'))).catch(() => {})
+
+    // Restore session
     const saved = localStorage.getItem('brew_user')
     if (saved) {
       const u = JSON.parse(saved)
-      setUser(u)
-      setFavorites(u.favorites || [])
+      // Refresh user from backend if we have a MongoDB _id
+      if (u._id) {
+        fetch(`${API}/user/${u._id}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(latest => {
+            const resolved = latest || u
+            localStorage.setItem('brew_user', JSON.stringify(resolved))
+            setUser(resolved)
+            setFavorites(resolved.favorites || [])
+          })
+          .catch(() => { setUser(u); setFavorites(u.favorites || []) })
+      } else {
+        setUser(u)
+        setFavorites(u.favorites || [])
+      }
       setScreen('home')
     }
   }, [])
 
+  // Persist user: localStorage + backend sync
   const saveUser = (u) => {
-    const users = JSON.parse(localStorage.getItem('brew_users') || '[]')
-    const updated = users.map(x => x.id === u.id ? u : x)
-    localStorage.setItem('brew_users', JSON.stringify(updated))
     localStorage.setItem('brew_user', JSON.stringify(u))
     setUser(u)
+    if (u._id) {
+      fetch(`${API}/user/${u._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(u),
+      }).catch(() => {})
+    }
   }
 
   const handleLogin = (u) => {
@@ -812,9 +879,10 @@ export default function App() {
 
   const handlePlaceOrder = (starsEarned, total, usedFreeReward = false) => {
     if (!user) return
+    const itemCount = cart.reduce((s, i) => s + i.quantity, 0)
     const orderEntry = {
       date: Date.now(),
-      itemCount: cart.reduce((s, i) => s + i.quantity, 0),
+      itemCount,
       total: Math.round(total),
       stars: starsEarned,
     }
@@ -825,7 +893,15 @@ export default function App() {
       date: Date.now(),
       type: 'earned',
       stars: starsEarned,
-      itemCount: cart.reduce((s, i) => s + i.quantity, 0),
+      itemCount,
+    }
+    // Save order to backend
+    if (user._id) {
+      fetch(`${API}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user._id, itemCount, total: Math.round(total), stars: starsEarned }),
+      }).catch(() => {})
     }
     saveUser({
       ...user,
@@ -867,11 +943,11 @@ export default function App() {
   return (
     <div className="app-shell">
       {screen === 'home' && (
-        <HomeScreen user={user} favorites={favorites} cart={cart}
+        <HomeScreen user={user} favorites={favorites} cart={cart} drinks={drinks} allProducts={allProducts}
           onNavigate={setScreen} onToggleFavorite={handleToggleFavorite} onAddToCart={handleAddToCart} />
       )}
       {screen === 'products' && (
-        <ProductsScreen favorites={favorites} cart={cart} cartCount={cartCount}
+        <ProductsScreen favorites={favorites} cart={cart} cartCount={cartCount} drinks={drinks} mugs={mugs} foods={foods}
           onToggleFavorite={handleToggleFavorite} onAddToCart={handleAddToCart}
           onCartClick={() => setScreen('order')} />
       )}
