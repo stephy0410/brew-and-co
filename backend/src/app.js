@@ -35,7 +35,8 @@ app.get('/foods', async (req, res) => {
 // ── Auth & User ─────────────────────────────────────────────
 app.post('/register', async (req, res) => {
   try {
-    const user = await User.create(req.body);
+    const storeCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const user = await User.create({ ...req.body, storeCode });
     res.status(201).json(user);
   } catch (e) { res.status(400).json({ error: e.message }) }
 });
@@ -58,6 +59,14 @@ app.put('/user/:id', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(user);
+  } catch (e) { res.status(400).json({ error: e.message }) }
+});
+
+app.delete('/user/:id', async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true, message: 'Account deleted successfully' });
   } catch (e) { res.status(400).json({ error: e.message }) }
 });
 

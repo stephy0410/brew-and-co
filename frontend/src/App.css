@@ -149,6 +149,19 @@ body {
 }
 
 /* ── Top Nav ───────────────────────────────────────────── */
+.topnav-stars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(201, 169, 110, 0.15);
+  color: var(--gold);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: auto;
+}
+
 .topnav {
   display: flex;
   align-items: center;
@@ -1083,6 +1096,29 @@ body {
   margin-bottom: 4px;
 }
 
+.store-code-box {
+  background: var(--cream);
+  border: 2px dashed rgba(201, 169, 110, 0.4);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  margin-top: 12px;
+}
+
+.store-code-text {
+  font-family: 'Inter', monospace;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--brown);
+  letter-spacing: 4px;
+}
+
+.store-code-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
 .code-sub {
   font-size: 12px;
   color: var(--muted);
@@ -1330,6 +1366,19 @@ body {
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
+}
+
+.delete-account-btn {
+  width: 100%;
+  padding: 14px;
+  background: #350707;
+  border: none;
+  color: #ffffff;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 8px;
 }
 
 /* ── How It Works ───────────────────────────────────────── */
