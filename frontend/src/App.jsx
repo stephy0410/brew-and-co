@@ -19,6 +19,28 @@ const VALID_CODES = ['BREW2026', 'COFFEE1', 'STAR10', 'BREW100']
 // ── API & visual lookup (images are served locally) ────────
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
+// ── Auth token helpers ────────────────────────────────────
+const getToken = () => localStorage.getItem('brew_token')
+const setToken = (t) => localStorage.setItem('brew_token', t)
+const clearAuth = () => {
+  localStorage.removeItem('brew_token')
+  localStorage.removeItem('brew_user')
+}
+
+// fetch wrapper that attaches the bearer token. Throws { status: 401 } so
+// callers can force a sign-out when the session is no longer valid.
+const authFetch = (path, opts = {}) => {
+  const token = getToken()
+  return fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+}
+
 const DRINK_VISUALS = {
   'Star Latte':   { gradient: 'linear-gradient(135deg,#8a6040,#c4956a)', img: 'star-latte.jpg' },
   'Cappuccino':   { gradient: 'linear-gradient(135deg,#6b4c35,#a07850)', img: 'cappuccino.jpg' },
@@ -187,8 +209,9 @@ function LoginScreen({ onLogin }) {
         })
         const data = await r.json()
         if (!r.ok) throw new Error(data.error || 'Registration failed')
-        localStorage.setItem('brew_user', JSON.stringify(data))
-        onLogin(data)
+        setToken(data.token)
+        localStorage.setItem('brew_user', JSON.stringify(data.user))
+        onLogin(data.user)
       } catch (e) { setError(e.message) }
     } else {
       try {
@@ -199,8 +222,9 @@ function LoginScreen({ onLogin }) {
         })
         const data = await r.json()
         if (!r.ok) throw new Error(data.error || 'Invalid email or password')
-        localStorage.setItem('brew_user', JSON.stringify(data))
-        onLogin(data)
+        setToken(data.token)
+        localStorage.setItem('brew_user', JSON.stringify(data.user))
+        onLogin(data.user)
       } catch (e) { setError(e.message) }
     }
   }
@@ -710,14 +734,23 @@ function AccountScreen({ user, onSignOut, onUpdateUser }) {
     setEditing(false)
   }
 
-  const changePassword = () => {
-    if (pwForm.current !== user.password) { setPwMsg('Current password incorrect'); return }
+  const changePassword = async () => {
+    if (!pwForm.current) { setPwMsg('Current password incorrect'); return }
     if (pwForm.newPw !== pwForm.confirm) { setPwMsg('Passwords do not match'); return }
     if (pwForm.newPw.length < 6) { setPwMsg('Min 6 characters'); return }
-    onUpdateUser({ ...user, password: pwForm.newPw })
-    setPwForm({ current: '', newPw: '', confirm: '' })
-    setPwMsg('Password updated!')
-    setTimeout(() => setPwMsg(''), 3000)
+    try {
+      const r = await authFetch(`/user/${user._id}/password`, {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword: pwForm.current, newPassword: pwForm.newPw }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) { setPwMsg(data.error || 'Could not update password'); return }
+      setPwForm({ current: '', newPw: '', confirm: '' })
+      setPwMsg('Password updated!')
+      setTimeout(() => setPwMsg(''), 3000)
+    } catch {
+      setPwMsg('Could not update password')
+    }
   }
 
   const deleteAccount = async () => {
@@ -725,7 +758,7 @@ function AccountScreen({ user, onSignOut, onUpdateUser }) {
     if (confirmDelete) {
       if (user?._id) {
         try {
-          await fetch(`${API}/user/${user._id}`, { method: 'DELETE' });
+          await authFetch(`/user/${user._id}`, { method: 'DELETE' });
         } catch (e) {
           console.error('Failed to delete account:', e);
         }
@@ -823,22 +856,32 @@ export default function App() {
     const saved = localStorage.getItem('brew_user')
     if (saved) {
       const u = JSON.parse(saved)
-      // Refresh user from backend if we have a MongoDB _id
-      if (u._id) {
-        fetch(`${API}/user/${u._id}`)
-          .then(r => r.ok ? r.json() : null)
+      // Refresh user from backend if we have a MongoDB _id + a token
+      if (u._id && getToken()) {
+        authFetch(`/user/${u._id}`)
+          .then(r => {
+            if (r.status === 401) { clearAuth(); return 'expired' }
+            return r.ok ? r.json() : null
+          })
           .then(latest => {
+            if (latest === 'expired') {
+              setUser(null); setFavorites([]); setScreen('login'); return
+            }
             const resolved = latest || u
             localStorage.setItem('brew_user', JSON.stringify(resolved))
             setUser(resolved)
             setFavorites(resolved.favorites || [])
+            setScreen('home')
           })
-          .catch(() => { setUser(u); setFavorites(u.favorites || []) })
+          .catch(() => { setUser(u); setFavorites(u.favorites || []); setScreen('home') })
+      } else if (u._id) {
+        // stored user but no token → require a fresh sign-in
+        clearAuth()
       } else {
         setUser(u)
         setFavorites(u.favorites || [])
+        setScreen('home')
       }
-      setScreen('home')
     }
   }, [])
 
@@ -847,10 +890,11 @@ export default function App() {
     localStorage.setItem('brew_user', JSON.stringify(u))
     setUser(u)
     if (u._id) {
-      fetch(`${API}/user/${u._id}`, {
+      authFetch(`/user/${u._id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(u),
+      }).then(r => {
+        if (r.status === 401) handleSignOut()
       }).catch(() => {})
     }
   }
@@ -862,7 +906,7 @@ export default function App() {
   }
 
   const handleSignOut = () => {
-    localStorage.removeItem('brew_user')
+    clearAuth()
     setUser(null)
     setCart([])
     setFavorites([])
@@ -924,12 +968,11 @@ export default function App() {
       stars: starsEarned,
       itemCount,
     }
-    // Save order to backend
+    // Save order to backend (server binds it to the authenticated user)
     if (user._id) {
-      fetch(`${API}/orders`, {
+      authFetch(`/orders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user._id, itemCount, total: Math.round(total), stars: starsEarned }),
+        body: JSON.stringify({ itemCount, total: Math.round(total), stars: starsEarned }),
       }).catch(() => {})
     }
     saveUser({
