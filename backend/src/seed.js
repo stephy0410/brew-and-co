@@ -54,7 +54,8 @@ const seed = async () => {
   await Drink.insertMany(drinks);
   await Mug.insertMany(mugs);
   await Food.insertMany(foods);
-  await User.insertMany(users);
+  // create() one-by-one so the pre-save hook hashes each password
+  for (const u of users) await User.create(u);
   await Order.insertMany(orders);
   await Favorite.insertMany(favorites);
   console.log('Database seeded successfully');

@@ -1,16 +1,50 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
 const Drink = require('./models/Drink');
 const Mug = require('./models/Mug');
 const Food = require('./models/Food');
 const User = require('./models/User');
 const Order = require('./models/Order');
 const Favorite = require('./models/Favorite');
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('./config');
+const { auth, requireSelf } = require('./middleware/auth');
 
 const app = express();
 
-app.use(cors());
+// Restrict CORS to the known frontend origin(s). CORS_ORIGIN is a
+// comma-separated list; defaults cover local dev.
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(helmet());
+app.use(cors({
+  origin(origin, cb) {
+    // allow same-origin / curl / server-to-server (no Origin header)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error('Not allowed by CORS'));
+  },
+}));
 app.use(express.json());
+// Strip keys containing `$` or `.` so request bodies can't smuggle Mongo
+// query operators (NoSQL injection).
+app.use(mongoSanitize());
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please try again later' },
+});
+
+const isNonEmptyString = (v) => typeof v === 'string' && v.trim().length > 0;
+const signToken = (user) => jwt.sign({ sub: user._id.toString() }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
@@ -33,58 +67,116 @@ app.get('/foods', async (req, res) => {
 });
 
 // ── Auth & User ─────────────────────────────────────────────
-app.post('/register', async (req, res) => {
+app.post('/register', authLimiter, async (req, res) => {
   try {
+    const { name, email, password } = req.body;
+    if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
+      return res.status(400).json({ error: 'email and password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
     const storeCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const user = await User.create({ ...req.body, storeCode });
-    res.status(201).json(user);
-  } catch (e) { res.status(400).json({ error: e.message }) }
+    const user = await User.create({ name, email, password, storeCode });
+    return res.status(201).json({ user, token: signToken(user) });
+  } catch (e) {
+    if (e.code === 11000) return res.status(400).json({ error: 'Email already registered' });
+    return res.status(400).json({ error: e.message });
+  }
 });
 
-app.post('/login', async (req, res) => {
-  const user = await User.findOne({ email: req.body.email, password: req.body.password });
-  if (user) res.json(user); else res.status(401).json({ error: 'Invalid credentials' });
+app.post('/login', authLimiter, async (req, res) => {
+  const { email, password } = req.body;
+  if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
+    return res.status(400).json({ error: 'email and password are required' });
+  }
+  const user = await User.findOne({ email }).select('+password');
+  if (!user || !(await user.comparePassword(password))) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  return res.json({ user, token: signToken(user) });
 });
 
 // GET /user/:id → fetch latest user data (session refresh on app load)
-app.get('/user/:id', async (req, res) => {
+app.get('/user/:id', auth, requireSelf('id'), async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'Not found' });
-    res.json(user);
-  } catch (e) { res.status(400).json({ error: e.message }) }
+    return res.json(user);
+  } catch (e) { return res.status(400).json({ error: e.message }); }
 });
 
-app.put('/user/:id', async (req, res) => {
+// Fields a client must never be able to set through a profile update.
+const IMMUTABLE_USER_FIELDS = ['password', '_id', '__v', 'storeCode'];
+
+app.put('/user/:id', auth, requireSelf('id'), async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    res.json(user);
-  } catch (e) { res.status(400).json({ error: e.message }) }
+    const update = { ...req.body };
+    IMMUTABLE_USER_FIELDS.forEach((f) => delete update[f]);
+    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    return res.json(user);
+  } catch (e) { return res.status(400).json({ error: e.message }); }
 });
 
-app.delete('/user/:id', async (req, res) => {
+app.post('/user/:id/password', auth, requireSelf('id'), async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!isNonEmptyString(currentPassword) || !isNonEmptyString(newPassword)) {
+    return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+  const user = await User.findById(req.params.id).select('+password');
+  if (!user) return res.status(404).json({ error: 'Not found' });
+  if (!(await user.comparePassword(currentPassword))) {
+    return res.status(401).json({ error: 'Current password incorrect' });
+  }
+  user.password = newPassword;
+  await user.save();
+  return res.json({ success: true });
+});
+
+app.delete('/user/:id', auth, requireSelf('id'), async (req, res) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ success: true, message: 'Account deleted successfully' });
-  } catch (e) { res.status(400).json({ error: e.message }) }
+    return res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (e) { return res.status(400).json({ error: e.message }); }
 });
 
 // ── Orders ──────────────────────────────────────────────────
-app.get('/orders/:userId', async (req, res) => {
+app.get('/orders/:userId', auth, requireSelf('userId'), async (req, res) => {
   const orders = await Order.find({ userId: req.params.userId }).sort({ date: -1 });
-  res.json(orders);
+  return res.json(orders);
 });
 
-app.post('/orders', async (req, res) => {
+app.post('/orders', auth, async (req, res) => {
   try {
-    const order = await Order.create(req.body);
-    res.status(201).json(order);
-  } catch (e) { res.status(400).json({ error: e.message }) }
+    // Force the order onto the authenticated user; ignore any client userId.
+    const order = await Order.create({ ...req.body, userId: req.userId });
+    return res.status(201).json(order);
+  } catch (e) { return res.status(400).json({ error: e.message }); }
 });
 
-app.get('/debug-sentry', (req, res) => {
-  throw new Error('Sentry test error from Brew & Co. backend');
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/debug-sentry', () => {
+    throw new Error('Sentry test error from Brew & Co. backend');
+  });
+}
+
+// JSON error handler — keeps stack traces out of responses regardless of
+// NODE_ENV. (Registered here so it also applies under supertest; in
+// server.js the Sentry error handler runs before the app is listened on.)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  const status = err.status || err.statusCode || 500;
+  return res.status(status).json({
+    error: status >= 500 ? 'Internal server error' : err.message,
+  });
 });
 
 module.exports = app;
