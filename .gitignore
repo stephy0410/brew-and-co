@@ -6,3 +6,6 @@
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
+
+# Kubernetes secrets — real values only; use k8s/**/secret.example.yaml as the template
+k8s/**/secret.yaml

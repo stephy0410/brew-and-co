@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brew-and-co-backend
+  namespace: brew-and-co
+  labels:
+    app: brew-and-co-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: brew-and-co-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: brew-and-co-backend
+    spec:
+      containers:
+        - name: backend
+          # CI overrides this with :<git sha> via `kubectl set image`.
+          image: stephyborrego/brew-and-co-backend:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          # All config comes from the brew-and-co-backend-env Secret
+          # (see secret.example.yaml). Nothing sensitive is hardcoded here.
+          envFrom:
+            - secretRef:
+                name: brew-and-co-backend-env
+          resources:
+            # Starting point for an Intel dual-core node with limited RAM.
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
