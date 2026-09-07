@@ -18,6 +18,21 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
 
+    # Disposable MongoDB for the test run - no dependency on a live Atlas cluster
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      MONGODB_URI: mongodb://localhost:27017/brewandco_test
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,11 +48,13 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Seed test database
+        working-directory: backend
+        run: node src/seed.js
+
       - name: Run tests with coverage
         working-directory: backend
         run: npm test
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
