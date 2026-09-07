@@ -6,3 +6,4 @@
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
+k8s/**/secret.yaml
