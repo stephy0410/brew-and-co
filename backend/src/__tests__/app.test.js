@@ -208,3 +208,24 @@ describe('Order endpoints', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe('Error handling', () => {
+  const Drink = require('../models/Drink');
+
+  it('an async route that rejects → 500 with a generic body, process stays up', async () => {
+    const spy = jest.spyOn(Drink, 'find').mockRejectedValueOnce(new Error('simulated Mongo timeout'));
+
+    const res = await request(app).get('/drinks');
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal server error' });
+    // no internal detail leaked
+    expect(JSON.stringify(res.body)).not.toMatch(/timeout|stack|Mongo/i);
+
+    spy.mockRestore();
+
+    // the server still handles the next request normally
+    const ok = await request(app).get('/health');
+    expect(ok.statusCode).toBe(200);
+  });
+});
