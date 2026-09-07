@@ -88,20 +88,37 @@ jobs:
             stephyborrego/brew-and-co-backend:${{ github.sha }}
 
   deploy-dev:
-    name: Deploy to Dev
+    name: Deploy to Dev (k3s)
     runs-on: ubuntu-latest
     needs: docker
     if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     steps:
-      - name: Deploy to EC2 Dev
-        uses: appleboy/ssh-action@v1.0.3
+      # The dev node is a private k3s box with no public IP; reach it over Tailscale.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
         with:
-          host: ${{ secrets.EC2_DEV_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            docker pull stephyborrego/brew-and-co-backend:latest && docker stop brew-and-co-backend || true && docker rm brew-and-co-backend || true && docker run -d -p 3000:3000 -e PORT=3000 -e NODE_ENV=development -e SENTRY_DSN=${{ secrets.SENTRY_DSN }} -e MONGODB_URI="${{ secrets.MONGODB_URI }}" -e JWT_SECRET="${{ secrets.JWT_SECRET }}" -e CORS_ORIGIN="${{ secrets.CORS_ORIGIN_DEV }}" --name brew-and-co-backend --restart always stephyborrego/brew-and-co-backend:latest
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Write kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+          chmod 600 "$RUNNER_TEMP/kubeconfig"
+
+      - name: Roll out new image
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: |
+          kubectl -n brew-and-co set image deployment/brew-and-co-backend \
+            backend=stephyborrego/brew-and-co-backend:${{ github.sha }}
+          kubectl -n brew-and-co rollout status deployment/brew-and-co-backend --timeout=120s
 
   deploy-prod:
     name: Deploy to Prod
