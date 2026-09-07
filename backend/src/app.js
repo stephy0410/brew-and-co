@@ -15,6 +15,20 @@ const { auth, requireSelf } = require('./middleware/auth');
 
 const app = express();
 
+// Last-resort process guards: log, but don't let a stray rejection/throw take
+// the whole server down. Per-request failures are already handled by
+// asyncHandler + the error middleware below; these only catch what slips past.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+
+// Wraps an async route handler so a rejected promise is forwarded to the
+// Express error middleware instead of becoming an unhandled rejection.
+const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 // Restrict CORS to the known frontend origin(s). CORS_ORIGIN is a
 // comma-separated list; defaults cover local dev.
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3000')
@@ -51,41 +65,36 @@ app.get('/health', (req, res) => {
 });
 
 // ── Products ────────────────────────────────────────────────
-app.get('/drinks', async (req, res) => {
+app.get('/drinks', asyncHandler(async (req, res) => {
   const drinks = await Drink.find({}, '-__v');
   res.status(200).json(drinks);
-});
+}));
 
-app.get('/mugs', async (req, res) => {
+app.get('/mugs', asyncHandler(async (req, res) => {
   const mugs = await Mug.find({}, '-__v');
   res.status(200).json(mugs);
-});
+}));
 
-app.get('/foods', async (req, res) => {
+app.get('/foods', asyncHandler(async (req, res) => {
   const foods = await Food.find({}, '-__v');
   res.status(200).json(foods);
-});
+}));
 
 // ── Auth & User ─────────────────────────────────────────────
-app.post('/register', authLimiter, async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
-      return res.status(400).json({ error: 'email and password are required' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-    const storeCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const user = await User.create({ name, email, password, storeCode });
-    return res.status(201).json({ user, token: signToken(user) });
-  } catch (e) {
-    if (e.code === 11000) return res.status(400).json({ error: 'Email already registered' });
-    return res.status(400).json({ error: e.message });
+app.post('/register', authLimiter, asyncHandler(async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
+    return res.status(400).json({ error: 'email and password are required' });
   }
-});
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+  const storeCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const user = await User.create({ name, email, password, storeCode });
+  return res.status(201).json({ user, token: signToken(user) });
+}));
 
-app.post('/login', authLimiter, async (req, res) => {
+app.post('/login', authLimiter, asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
     return res.status(400).json({ error: 'email and password are required' });
@@ -95,31 +104,27 @@ app.post('/login', authLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
   return res.json({ user, token: signToken(user) });
-});
+}));
 
 // GET /user/:id → fetch latest user data (session refresh on app load)
-app.get('/user/:id', auth, requireSelf('id'), async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: 'Not found' });
-    return res.json(user);
-  } catch (e) { return res.status(400).json({ error: e.message }); }
-});
+app.get('/user/:id', auth, requireSelf('id'), asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ error: 'Not found' });
+  return res.json(user);
+}));
 
 // Fields a client must never be able to set through a profile update.
 const IMMUTABLE_USER_FIELDS = ['password', '_id', '__v', 'storeCode'];
 
-app.put('/user/:id', auth, requireSelf('id'), async (req, res) => {
-  try {
-    const update = { ...req.body };
-    IMMUTABLE_USER_FIELDS.forEach((f) => delete update[f]);
-    const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
-    if (!user) return res.status(404).json({ error: 'Not found' });
-    return res.json(user);
-  } catch (e) { return res.status(400).json({ error: e.message }); }
-});
+app.put('/user/:id', auth, requireSelf('id'), asyncHandler(async (req, res) => {
+  const update = { ...req.body };
+  IMMUTABLE_USER_FIELDS.forEach((f) => delete update[f]);
+  const user = await User.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+  if (!user) return res.status(404).json({ error: 'Not found' });
+  return res.json(user);
+}));
 
-app.post('/user/:id/password', auth, requireSelf('id'), async (req, res) => {
+app.post('/user/:id/password', auth, requireSelf('id'), asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!isNonEmptyString(currentPassword) || !isNonEmptyString(newPassword)) {
     return res.status(400).json({ error: 'currentPassword and newPassword are required' });
@@ -135,29 +140,25 @@ app.post('/user/:id/password', auth, requireSelf('id'), async (req, res) => {
   user.password = newPassword;
   await user.save();
   return res.json({ success: true });
-});
+}));
 
-app.delete('/user/:id', auth, requireSelf('id'), async (req, res) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    return res.json({ success: true, message: 'Account deleted successfully' });
-  } catch (e) { return res.status(400).json({ error: e.message }); }
-});
+app.delete('/user/:id', auth, requireSelf('id'), asyncHandler(async (req, res) => {
+  const user = await User.findByIdAndDelete(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  return res.json({ success: true, message: 'Account deleted successfully' });
+}));
 
 // ── Orders ──────────────────────────────────────────────────
-app.get('/orders/:userId', auth, requireSelf('userId'), async (req, res) => {
+app.get('/orders/:userId', auth, requireSelf('userId'), asyncHandler(async (req, res) => {
   const orders = await Order.find({ userId: req.params.userId }).sort({ date: -1 });
   return res.json(orders);
-});
+}));
 
-app.post('/orders', auth, async (req, res) => {
-  try {
-    // Force the order onto the authenticated user; ignore any client userId.
-    const order = await Order.create({ ...req.body, userId: req.userId });
-    return res.status(201).json(order);
-  } catch (e) { return res.status(400).json({ error: e.message }); }
-});
+app.post('/orders', auth, asyncHandler(async (req, res) => {
+  // Force the order onto the authenticated user; ignore any client userId.
+  const order = await Order.create({ ...req.body, userId: req.userId });
+  return res.status(201).json(order);
+}));
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/debug-sentry', () => {
@@ -165,18 +166,28 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// JSON error handler — keeps stack traces out of responses regardless of
-// NODE_ENV. (Registered here so it also applies under supertest; in
-// server.js the Sentry error handler runs before the app is listened on.)
+// ── Central error handler ───────────────────────────────────
+// Every async route funnels rejected promises here via asyncHandler. Keeps
+// internal error details (stack traces, driver messages) out of responses.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   if (err && err.message === 'Not allowed by CORS') {
     return res.status(403).json({ error: 'Origin not allowed' });
   }
+  // Known client-caused Mongoose errors → 400 rather than 500.
+  if (err && err.code === 11000) {
+    return res.status(400).json({ error: 'Email already registered' });
+  }
+  if (err && (err.name === 'ValidationError' || err.name === 'CastError')) {
+    return res.status(400).json({ error: 'Invalid request data' });
+  }
+
   const status = err.status || err.statusCode || 500;
-  return res.status(status).json({
-    error: status >= 500 ? 'Internal server error' : err.message,
-  });
+  if (status >= 500) {
+    console.error('[error]', req.method, req.originalUrl, '-', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+  return res.status(status).json({ error: err.message });
 });
 
 module.exports = app;
