@@ -84,7 +84,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            docker pull stephyborrego/brew-and-co-backend:latest && docker stop brew-and-co-backend || true && docker rm brew-and-co-backend || true && docker run -d -p 3000:3000 -e PORT=3000 -e NODE_ENV=development -e SENTRY_DSN=${{ secrets.SENTRY_DSN }} -e MONGODB_URI="${{ secrets.MONGODB_URI }}" --name brew-and-co-backend --restart always stephyborrego/brew-and-co-backend:latest
+            docker pull stephyborrego/brew-and-co-backend:latest && docker stop brew-and-co-backend || true && docker rm brew-and-co-backend || true && docker run -d -p 3000:3000 -e PORT=3000 -e NODE_ENV=development -e SENTRY_DSN=${{ secrets.SENTRY_DSN }} -e MONGODB_URI="${{ secrets.MONGODB_URI }}" -e JWT_SECRET="${{ secrets.JWT_SECRET }}" -e CORS_ORIGIN="${{ secrets.CORS_ORIGIN_DEV }}" --name brew-and-co-backend --restart always stephyborrego/brew-and-co-backend:latest
 
   deploy-prod:
     name: Deploy to Prod
@@ -100,4 +100,4 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            docker pull stephyborrego/brew-and-co-backend:latest && docker stop brew-and-co-backend || true && docker rm brew-and-co-backend || true && docker run -d -p 3000:3000 -e PORT=3000 -e NODE_ENV=development -e SENTRY_DSN=${{ secrets.SENTRY_DSN }} -e MONGODB_URI="${{ secrets.MONGODB_URI }}" --name brew-and-co-backend --restart always stephyborrego/brew-and-co-backend:latest
+            docker pull stephyborrego/brew-and-co-backend:latest && docker stop brew-and-co-backend || true && docker rm brew-and-co-backend || true && docker run -d -p 3000:3000 -e PORT=3000 -e NODE_ENV=production -e SENTRY_DSN=${{ secrets.SENTRY_DSN }} -e MONGODB_URI="${{ secrets.MONGODB_URI }}" -e JWT_SECRET="${{ secrets.JWT_SECRET }}" -e CORS_ORIGIN="${{ secrets.CORS_ORIGIN_PROD }}" --name brew-and-co-backend --restart always stephyborrego/brew-and-co-backend:latest

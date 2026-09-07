@@ -1,2 +1,8 @@
 .env
 .env.local
+
+# Terraform state — never commit (contains resource IDs / secrets)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
